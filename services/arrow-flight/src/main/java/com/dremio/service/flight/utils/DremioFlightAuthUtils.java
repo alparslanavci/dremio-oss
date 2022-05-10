@@ -51,6 +51,7 @@ public final class DremioFlightAuthUtils {
                                                     DremioFlightSessionsManager dremioFlightSessionsManager,
                                                     String username, String password, Logger logger) {
     AuthResult authResult = authenticateCredentials(userServiceProvider, username, password, logger);
+
     return createToken(
       tokenManagerProvider,
       authResult.getUserName());
