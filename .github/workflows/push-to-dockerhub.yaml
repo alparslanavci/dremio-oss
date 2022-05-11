@@ -17,9 +17,9 @@ jobs:
           distribution: 'adopt-hotspot'
           java-version: '8'
 
-#      - name: Build Dremio
-#        run: |
-#          mvn clean install -DskipTests
+      - name: Build Dremio
+        run: |
+          mvn clean install -DskipTests
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v1
