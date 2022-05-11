@@ -36,9 +36,10 @@ RUN \
   && chown -R dremio:dremio /opt/dremio/data \
   && chown -R dremio:dremio /var/run/dremio \
   && chown -R dremio:dremio /var/log/dremio \
-  && chown -R dremio:dremio /var/lib/dremio \
-  && wget -q "${DOWNLOAD_URL}" -O dremio.tar.gz \
-  && tar vxfz dremio.tar.gz -C /opt/dremio --strip-components=1 \
+  && chown -R dremio:dremio /var/lib/dremio
+
+COPY server/target/*.tar.gz dremio.tar.gz
+RUN tar vxfz dremio.tar.gz -C /opt/dremio --strip-components=1 \
   && rm -rf dremio.tar.gz
 
 EXPOSE 9047/tcp
