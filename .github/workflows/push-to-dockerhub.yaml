@@ -42,6 +42,6 @@ jobs:
         uses: docker/build-push-action@v2
         with:
           context: distribution
-          file: docker/Dockerfile
+          file: distribution/docker/Dockerfile
           push: true
           tags: alparslanavci/dremio:${{ env.SHA_SHORT }}
