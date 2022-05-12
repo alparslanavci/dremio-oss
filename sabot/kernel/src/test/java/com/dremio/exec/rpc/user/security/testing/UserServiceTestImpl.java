@@ -155,6 +155,11 @@ public class UserServiceTestImpl implements UserService {
   }
 
   @Override
+  public com.dremio.service.users.User validateUser(String code) throws com.dremio.service.users.UserLoginException {
+    throw new UnsupportedOperationException("not supported");
+  }
+
+  @Override
   public List<User> getAllUsers(Integer pageSize)
       throws IOException {
     return null;
