@@ -74,6 +74,7 @@ import com.nimbusds.jwt.JWT;
 import com.nimbusds.oauth2.sdk.AuthorizationCode;
 import com.nimbusds.oauth2.sdk.AuthorizationCodeGrant;
 import com.nimbusds.oauth2.sdk.GeneralException;
+import com.nimbusds.oauth2.sdk.TokenErrorResponse;
 import com.nimbusds.oauth2.sdk.TokenRequest;
 import com.nimbusds.oauth2.sdk.TokenResponse;
 import com.nimbusds.oauth2.sdk.auth.ClientAuthentication;
@@ -384,17 +385,14 @@ public class SimpleUserService implements UserService, Service {
                                     new AuthorizationCodeGrant(new AuthorizationCode(code), callback));
       TokenResponse tokenResponse = OIDCTokenResponseParser.parse(tokenRequest.toHTTPRequest().send());
 
-//        if (! response.indicatesSuccess()) {
-      // We got an error response...
-//            TokenErrorResponse errorResponse = response.toErrorResponse();
-//        }
+      if (!tokenResponse.indicatesSuccess()) {
+        //We got an error response...
+        throw new UserLoginException(code, "User validation failed");
+      }
 
-//        OIDCTokenResponse successResponse = (OIDCTokenResponse)tokenResponse.toSuccessResponse();
-
-      // Get the ID and access token, the server may also return a refresh token
-      JWT idToken = tokenResponse.toSuccessResponse().getTokens().toOIDCTokens().getIDToken();
-
-      IDTokenClaimsSet claims = validator.validate(idToken, null);
+      IDTokenClaimsSet claims = validator.validate(
+        tokenResponse.toSuccessResponse().getTokens().toOIDCTokens().getIDToken(),
+        null);
       return SimpleUser.newBuilder()
         .setUserName(claims.getStringClaim("email"))
         .setEmail(claims.getStringClaim("email"))
