@@ -1477,7 +1477,7 @@ public class DACDaemonModule implements DACModule {
     final String authType = config.getString(WEB_AUTH_TYPE);
 
     if ("internal".equals(authType)) {
-      final SimpleUserService simpleUserService = new SimpleUserService(registry.provider(LegacyKVStoreProvider.class), isMaster);
+      final SimpleUserService simpleUserService = new SimpleUserService(config, registry.provider(LegacyKVStoreProvider.class), isMaster);
       registry.bindProvider(UserService.class, () -> simpleUserService);
       registry.bindSelf(simpleUserService);
       logger.info("Internal user/group service is configured.");

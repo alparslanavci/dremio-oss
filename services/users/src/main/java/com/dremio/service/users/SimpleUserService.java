@@ -18,8 +18,10 @@ package com.dremio.service.users;
 import static java.lang.String.format;
 
 import java.io.IOException;
+import java.net.URI;
 import java.security.SecureRandom;
 import java.security.spec.InvalidKeySpecException;
+import java.util.Calendar;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
@@ -33,6 +35,7 @@ import javax.inject.Inject;
 import javax.inject.Provider;
 
 import com.dremio.common.exceptions.UserException;
+import com.dremio.config.DremioConfig;
 import com.dremio.datastore.KVUtil;
 import com.dremio.datastore.SearchQueryUtils;
 import com.dremio.datastore.SearchTypes.SearchFieldSorting;
@@ -65,6 +68,23 @@ import com.google.common.base.Supplier;
 import com.google.common.base.Suppliers;
 import com.google.common.collect.Iterables;
 import com.google.common.collect.Lists;
+import com.nimbusds.jose.JOSEException;
+import com.nimbusds.jose.proc.BadJOSEException;
+import com.nimbusds.jwt.JWT;
+import com.nimbusds.oauth2.sdk.AuthorizationCode;
+import com.nimbusds.oauth2.sdk.AuthorizationCodeGrant;
+import com.nimbusds.oauth2.sdk.GeneralException;
+import com.nimbusds.oauth2.sdk.TokenRequest;
+import com.nimbusds.oauth2.sdk.TokenResponse;
+import com.nimbusds.oauth2.sdk.auth.ClientAuthentication;
+import com.nimbusds.oauth2.sdk.auth.ClientSecretBasic;
+import com.nimbusds.oauth2.sdk.auth.Secret;
+import com.nimbusds.oauth2.sdk.id.ClientID;
+import com.nimbusds.oauth2.sdk.id.Issuer;
+import com.nimbusds.openid.connect.sdk.OIDCTokenResponseParser;
+import com.nimbusds.openid.connect.sdk.claims.IDTokenClaimsSet;
+import com.nimbusds.openid.connect.sdk.op.OIDCProviderMetadata;
+import com.nimbusds.openid.connect.sdk.validators.IDTokenValidator;
 
 import io.protostuff.ByteString;
 
@@ -86,22 +106,28 @@ public class SimpleUserService implements UserService, Service {
   public static final String USER_STORE = "userGroup";
 
   private static final SecretKeyFactory secretKey = UserServiceUtils.buildSecretKey();
+  private DremioConfig dremioConfig;
   private final Supplier<LegacyIndexedStore<UID, UserInfo>> userStore;
   private final Provider<LegacyKVStoreProvider> kvStoreProvider;
   private final boolean isMaster;
 
   // when we call hasAnyUser() we cache the result in here so we never hit the kvStore once the value is true
   private final AtomicBoolean anyUserFound = new AtomicBoolean();
+  private OIDCProviderMetadata opMetadata;
+  private URI callback;
+  private IDTokenValidator validator;
+  private ClientAuthentication clientAuth;
 
   @Inject
-  public SimpleUserService(Provider<LegacyKVStoreProvider> kvStoreProvider, boolean isMaster) {
+  public SimpleUserService(DremioConfig dremioConfig, Provider<LegacyKVStoreProvider> kvStoreProvider, boolean isMaster) {
+    this.dremioConfig = dremioConfig;
     this.userStore = Suppliers.memoize(() -> kvStoreProvider.get().getStore(UserGroupStoreBuilder.class));
     this.kvStoreProvider = kvStoreProvider;
     this.isMaster = isMaster;
   }
 
   public SimpleUserService(Provider<LegacyKVStoreProvider> kvStoreProvider) {
-    this(kvStoreProvider, true);
+    this(null, kvStoreProvider, true);
   }
 
   @Override
@@ -116,6 +142,16 @@ public class SimpleUserService implements UserService, Service {
         newEntry.setValue(ByteString.copyFromUtf8(String.valueOf(System.currentTimeMillis())));
         configurationStore.put(LOWER_CASE_INDICES, newEntry);
       }
+
+      Issuer issuer = new Issuer(dremioConfig.getString(DremioConfig.SSO_ISSUER));
+      opMetadata = OIDCProviderMetadata.resolve(issuer);
+      callback = new URI(dremioConfig.getString(DremioConfig.SSO_CALLBACK_URI));
+      ClientID clientID = new ClientID(dremioConfig.getString(DremioConfig.SSO_CLIENT_ID));
+      Secret clientSecret = new Secret(dremioConfig.getString(DremioConfig.SSO_CLIENT_SECRET));
+      clientAuth = new ClientSecretBasic(clientID, clientSecret);
+      validator = new IDTokenValidator(issuer, clientID,
+        opMetadata.getIDTokenJWSAlgs().get(0), opMetadata.getJWKSetURI().toURL());
+
     }
   }
 
@@ -338,6 +374,35 @@ public class SimpleUserService implements UserService, Service {
       return AuthResult.of(userName);
     } catch (InvalidKeySpecException ikse) {
       throw new UserLoginException(userName, "Invalid user credentials");
+    }
+  }
+
+  @Override
+  public User validateUser(String code) throws UserLoginException {
+    try {
+      TokenRequest tokenRequest = new TokenRequest(opMetadata.getTokenEndpointURI(), clientAuth,
+                                    new AuthorizationCodeGrant(new AuthorizationCode(code), callback));
+      TokenResponse tokenResponse = OIDCTokenResponseParser.parse(tokenRequest.toHTTPRequest().send());
+
+//        if (! response.indicatesSuccess()) {
+      // We got an error response...
+//            TokenErrorResponse errorResponse = response.toErrorResponse();
+//        }
+
+//        OIDCTokenResponse successResponse = (OIDCTokenResponse)tokenResponse.toSuccessResponse();
+
+      // Get the ID and access token, the server may also return a refresh token
+      JWT idToken = tokenResponse.toSuccessResponse().getTokens().toOIDCTokens().getIDToken();
+
+      IDTokenClaimsSet claims = validator.validate(idToken, null);
+      return SimpleUser.newBuilder()
+        .setUserName(claims.getStringClaim("email"))
+        .setEmail(claims.getStringClaim("email"))
+        .setFirstName(claims.getStringClaim("name"))
+        .setCreatedAt(Calendar.getInstance().getTimeInMillis())
+        .build();
+    } catch (GeneralException | IOException | BadJOSEException | JOSEException e) {
+      throw new UserLoginException(code, "User validation failed");
     }
   }
 

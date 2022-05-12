@@ -81,6 +81,8 @@ public interface UserService {
   // TODO(DX-33891): use @CheckReturnValue
   AuthResult authenticate(String userName, String password) throws UserLoginException;
 
+  User validateUser(String code) throws UserLoginException;
+
   Iterable<? extends User> getAllUsers(Integer pageSize) throws IOException;
 
   boolean hasAnyUser() throws IOException;

@@ -70,6 +70,11 @@ public class ExecutorUserService implements UserService {
   }
 
   @Override
+  public User validateUser(String code) throws UserLoginException {
+    throw new UnsupportedOperationException("User service is not available on executors");
+  }
+
+  @Override
   public Iterable<? extends User> getAllUsers(Integer pageSize) throws IOException {
     throw new UnsupportedOperationException("User service is not available on executors");
   }
